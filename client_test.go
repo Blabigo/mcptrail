@@ -81,6 +81,56 @@ func TestCreateServer(t *testing.T) {
 	}
 }
 
+func TestCreateWebmcpServer(t *testing.T) {
+	var c capture
+	srv := stub(t, 201, `{"server":{"id":"s1","slug":"shop"},"proxyUrl":"https://p/v1/proxy/shop","bearerToken":"mg_live_x","bearerTokenExpiresAt":9,"pairing":{"token":"mg_wmcp_x","connectUrl":"wss://p/v1/bridge/connect/shop"}}`, &c)
+	defer srv.Close()
+	res, err := NewClient(srv.URL, "tok").CreateWebmcpServer(context.Background(), CreateWebmcpServerInput{
+		DisplayName: "Shop", Slug: "shop", Origin: "https://shop.example",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.method != "POST" || c.path != "/api/v1/servers" || c.body["kind"] != "webmcp" || c.body["origin"] != "https://shop.example" {
+		t.Fatalf("bad request: %s %s %+v", c.method, c.path, c.body)
+	}
+	if res.Pairing.Token != "mg_wmcp_x" || res.ProxyURL != "https://p/v1/proxy/shop" {
+		t.Fatalf("bad result: %+v", res)
+	}
+}
+
+func TestMintRunToken(t *testing.T) {
+	var c capture
+	srv := stub(t, 201, `{"bearerToken":"mg_mbr_x","proxyUrl":"https://p/v1/proxy/shop","expiresAt":9}`, &c)
+	defer srv.Close()
+	res, err := NewClient(srv.URL, "tok").MintRunToken(context.Background(), "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.method != "POST" || c.path != "/api/v1/servers/shop/run-token" {
+		t.Fatalf("bad request: %s %s", c.method, c.path)
+	}
+	if res.BearerToken != "mg_mbr_x" {
+		t.Fatalf("bad token: %q", res.BearerToken)
+	}
+}
+
+func TestMintWebmcpPairing(t *testing.T) {
+	var c capture
+	srv := stub(t, 201, `{"token":"mg_wmcp_x","connectUrl":"wss://p/v1/bridge/connect/shop","origin":"https://shop.example"}`, &c)
+	defer srv.Close()
+	res, err := NewClient(srv.URL, "tok").MintWebmcpPairing(context.Background(), "shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.method != "POST" || c.path != "/api/v1/servers/shop/webmcp-pairing" {
+		t.Fatalf("bad request: %s %s", c.method, c.path)
+	}
+	if res.ConnectURL != "wss://p/v1/bridge/connect/shop" {
+		t.Fatalf("bad connectUrl: %q", res.ConnectURL)
+	}
+}
+
 func TestUpdateServerSendsOnlyProvidedFields(t *testing.T) {
 	var c capture
 	srv := stub(t, 200, `{"ok":true,"applied":["proxyEnabled"]}`, &c)

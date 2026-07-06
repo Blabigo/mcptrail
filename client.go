@@ -59,6 +59,10 @@ type Server struct {
 	ToolAuthMode string `json:"toolAuthMode"`
 	DlpMode      string `json:"dlpMode"`
 	CreatedAt    *int64 `json:"createdAt"`
+	// WebmcpOrigin is the bridged website origin for a webmcp_bridge server; empty otherwise.
+	WebmcpOrigin           string `json:"webmcpOrigin,omitempty"`
+	BudgetCreditsRemaining int64  `json:"budgetCreditsRemaining"`
+	BudgetCreditCap        int64  `json:"budgetCreditCap"`
 }
 
 type ToolPolicy struct {
@@ -81,6 +85,37 @@ type CreateServerResult struct {
 	} `json:"server"`
 	BearerToken          string `json:"bearerToken"`
 	BearerTokenExpiresAt int64  `json:"bearerTokenExpiresAt"`
+}
+
+// CreateWebmcpServerInput provisions a browser-bridged (WebMCP) server for a website origin.
+type CreateWebmcpServerInput struct {
+	DisplayName string `json:"displayName"`
+	Slug        string `json:"slug"`
+	Origin      string `json:"origin"`
+}
+
+type WebmcpPairing struct {
+	Token      string `json:"token"`
+	ConnectURL string `json:"connectUrl"`
+	Origin     string `json:"origin,omitempty"`
+}
+
+type CreateWebmcpServerResult struct {
+	Server struct {
+		ID   string `json:"id"`
+		Slug string `json:"slug"`
+	} `json:"server"`
+	ProxyURL             string        `json:"proxyUrl"`
+	BearerToken          string        `json:"bearerToken"`
+	BearerTokenExpiresAt int64         `json:"bearerTokenExpiresAt"`
+	Pairing              WebmcpPairing `json:"pairing"`
+}
+
+// RunToken is a short-lived member token for running a server's tools through the proxy.
+type RunToken struct {
+	BearerToken string `json:"bearerToken"`
+	ProxyURL    string `json:"proxyUrl"`
+	ExpiresAt   int64  `json:"expiresAt"`
 }
 
 // ServerPatch updates gateway + auth-mode settings; nil fields are left unchanged.
@@ -243,6 +278,35 @@ func (c *Client) GetServer(ctx context.Context, slug string) (*Server, error) {
 func (c *Client) CreateServer(ctx context.Context, in CreateServerInput) (*CreateServerResult, error) {
 	var r CreateServerResult
 	if err := c.do(ctx, http.MethodPost, "/servers", in, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// CreateWebmcpServer provisions a browser-bridged (WebMCP) server; returns proxy URL,
+// bearer token, and a pairing token/URL for the Webmcp Trail extension.
+func (c *Client) CreateWebmcpServer(ctx context.Context, in CreateWebmcpServerInput) (*CreateWebmcpServerResult, error) {
+	body := map[string]string{"kind": "webmcp", "displayName": in.DisplayName, "slug": in.Slug, "origin": in.Origin}
+	var r CreateWebmcpServerResult
+	if err := c.do(ctx, http.MethodPost, "/servers", body, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// MintRunToken mints a short-lived member token for running a server's tools through the proxy.
+func (c *Client) MintRunToken(ctx context.Context, slug string) (*RunToken, error) {
+	var r RunToken
+	if err := c.do(ctx, http.MethodPost, "/servers/"+url.PathEscape(slug)+"/run-token", nil, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// MintWebmcpPairing mints a fresh WebMCP pairing token + connect URL for a browser-bridged server.
+func (c *Client) MintWebmcpPairing(ctx context.Context, slug string) (*WebmcpPairing, error) {
+	var r WebmcpPairing
+	if err := c.do(ctx, http.MethodPost, "/servers/"+url.PathEscape(slug)+"/webmcp-pairing", nil, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
